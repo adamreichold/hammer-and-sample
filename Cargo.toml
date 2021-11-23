@@ -1,0 +1,14 @@
+[package]
+name = "hammer-and-sample"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+test = false
+
+[dependencies]
+rand = { version = "0.8", default-features = false }
+rayon = "1.5"
+
+[dev-dependencies]
+rand_pcg = "0.3"
