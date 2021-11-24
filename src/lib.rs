@@ -2,6 +2,7 @@ use rand::{
     distributions::{Distribution, Standard, Uniform},
     Rng,
 };
+#[cfg(feature = "rayon")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelExtend, ParallelIterator};
 
 pub trait Params: Send + Sync + Clone {
@@ -51,21 +52,21 @@ where
     let random_index = Uniform::new(0, half);
 
     for _ in 0..iterations {
-        chain.par_extend(lower_half.par_iter_mut().map(|walker| {
+        extend_chain(&mut chain, lower_half, |walker| {
             let other = &upper_half[random_index.sample(&mut walker.rng)];
 
             walker.move_(model, other);
 
             walker.state.clone()
-        }));
+        });
 
-        chain.par_extend(upper_half.par_iter_mut().map(|walker| {
+        extend_chain(&mut chain, upper_half, |walker| {
             let other = &lower_half[random_index.sample(&mut walker.rng)];
 
             walker.move_(model, other);
 
             walker.state.clone()
-        }));
+        });
     }
 
     let accepted = walkers.iter().map(|walker| walker.accepted).sum();
@@ -100,7 +101,7 @@ where
     }
 
     fn move_(&mut self, model: &M, other: &Self) {
-        let z = (M::SCALE - 1.) * Distribution::<f64>::sample(&Standard, &mut self.rng) + 1.;
+        let z = (M::SCALE - 1.) * gen_unit(&mut self.rng) + 1.;
         let z_2 = z * z / M::SCALE;
 
         let new_state = self.state.propose(&other.state, z_2);
@@ -109,10 +110,36 @@ where
         let log_prob_diff =
             (M::Params::DIMENSION - 1) as f64 * z_2.ln() + new_log_prob - self.log_prob;
 
-        if log_prob_diff > Distribution::<f64>::sample(&Standard, &mut self.rng).ln() {
+        if log_prob_diff > gen_unit(&mut self.rng).ln() {
             self.state = new_state;
             self.log_prob = new_log_prob;
             self.accepted += 1;
         }
     }
+}
+
+#[cfg(feature = "rayon")]
+fn extend_chain<M, R, U>(chain: &mut Vec<M::Params>, walkers: &mut [Walker<M, R>], update: U)
+where
+    M: Model,
+    R: Send,
+    U: Fn(&mut Walker<M, R>) -> M::Params + Send + Sync,
+{
+    chain.par_extend(walkers.par_iter_mut().map(update));
+}
+
+#[cfg(not(feature = "rayon"))]
+fn extend_chain<M, R, U>(chain: &mut Vec<M::Params>, walkers: &mut [Walker<M, R>], update: U)
+where
+    M: Model,
+    U: Fn(&mut Walker<M, R>) -> M::Params,
+{
+    chain.extend(walkers.iter_mut().map(update));
+}
+
+fn gen_unit<R>(rng: &mut R) -> f64
+where
+    R: Rng,
+{
+    Distribution::<f64>::sample(&Standard, rng)
 }
