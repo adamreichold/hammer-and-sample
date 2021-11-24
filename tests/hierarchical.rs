@@ -1,7 +1,7 @@
 use std::f64::consts::PI;
 
-use rand::{seq::SliceRandom, Rng, SeedableRng};
-use rand_distr::{Bernoulli, Distribution, Normal, Standard};
+use rand::{seq::SliceRandom, SeedableRng};
+use rand_distr::{Bernoulli, Distribution, Normal};
 use rand_pcg::Pcg64Mcg;
 
 use hammer_and_sample::{sample, Model};
@@ -9,10 +9,10 @@ use hammer_and_sample::{sample, Model};
 #[test]
 fn hierarchical() {
     const GROUPS: usize = 10;
-    const OBSERVATIONS: usize = 100;
+    const OBSERVATIONS: usize = 1000;
     const WALKERS: usize = 1000;
-    const ITERATIONS: usize = 5000;
-    const BURN_IN: usize = 1000;
+    const ITERATIONS: usize = 10000;
+    const BURN_IN: usize = 5000;
 
     struct Hierarchical {
         data: Vec<(bool, usize)>,
@@ -22,27 +22,25 @@ fn hierarchical() {
         type Params = [f64; 2 + GROUPS];
 
         fn log_prob(&self, state: &Self::Params) -> f64 {
-            let theta = state[0];
+            let logit_theta = state[0];
             let sigma = state[1];
 
-            // (uninformative) prior on theta
-            if theta < 0. || theta > 1. {
-                return f64::NEG_INFINITY;
-            }
+            // prior on logit_theta
+            let mut log_prob = log_normal(logit_theta, -2., 2.);
 
             // prior on sigma (half normal)
             if sigma < 0. {
                 return f64::NEG_INFINITY;
             }
 
-            let mut log_prob = log_normal(sigma, 0., 2.) + f64::ln(2.);
+            log_prob += log_normal(sigma, 0., 2.) + f64::ln(2.);
 
             let mut ln_group_theta = [0.; GROUPS];
             let mut ln_1_group_theta = [0.; GROUPS];
 
             for group in 0..GROUPS {
                 let group_alpha = state[2 + group];
-                let group_theta = expit(logit(theta) + group_alpha);
+                let group_theta = expit(logit_theta + group_alpha);
 
                 ln_group_theta[group] = group_theta.ln();
                 ln_1_group_theta[group] = (1. - group_theta).ln();
@@ -68,7 +66,7 @@ fn hierarchical() {
         }
     }
 
-    let true_theta = 0.25;
+    let true_logit_theta = -3.;
     let true_sigma = 1.;
     let mut true_alpha = [0.; GROUPS];
 
@@ -80,7 +78,7 @@ fn hierarchical() {
 
     for group in 0..GROUPS {
         let true_group_alpha = true_alpha_dist.sample(&mut rng);
-        let true_group_theta = expit(logit(true_theta) + true_group_alpha);
+        let true_group_theta = expit(true_logit_theta + true_group_alpha);
 
         true_alpha[group] = true_group_alpha;
 
@@ -95,16 +93,17 @@ fn hierarchical() {
 
     let model = Hierarchical { data };
 
+    let prior_logit_theta = Normal::<f64>::new(-2., 2.).unwrap();
     let prior_sigma = Normal::<f64>::new(0., 2.).unwrap();
 
     let walkers = (0..WALKERS).map(|_| {
         let mut rng = Pcg64Mcg::from_rng(&mut rng).unwrap();
 
-        let guess_theta = gen_unit(&mut rng);
+        let guess_logit_theta = prior_logit_theta.sample(&mut rng);
         let guess_sigma = prior_sigma.sample(&mut rng).abs();
 
         let mut guess = [0.; 2 + GROUPS];
-        guess[0] = guess_theta;
+        guess[0] = guess_logit_theta;
         guess[1] = guess_sigma;
 
         let prior_alpha = Normal::new(0., guess_sigma).unwrap();
@@ -122,15 +121,15 @@ fn hierarchical() {
 
     let converged_chain = &chain[WALKERS * BURN_IN..];
 
-    let estimated_theta =
+    let estimated_logit_theta =
         converged_chain.iter().map(|params| params[0]).sum::<f64>() / converged_chain.len() as f64;
 
-    assert!((true_theta - estimated_theta).abs() < 0.05);
+    assert!((true_logit_theta - estimated_logit_theta).abs() < 0.1);
 
     let estimated_sigma =
         converged_chain.iter().map(|params| params[1]).sum::<f64>() / converged_chain.len() as f64;
 
-    assert!((true_sigma - estimated_sigma).abs() < 0.25);
+    assert!((true_sigma - estimated_sigma).abs() < 0.1);
 
     for group in 0..GROUPS {
         let estimated_group_alpha = converged_chain
@@ -139,16 +138,12 @@ fn hierarchical() {
             .sum::<f64>()
             / converged_chain.len() as f64;
 
-        assert!((true_alpha[group] - estimated_group_alpha).abs() < 0.75);
+        assert!((true_alpha[group] - estimated_group_alpha).abs() < 1.);
     }
 
     let acceptance_rate = accepted as f64 / chain.len() as f64;
 
     assert!(acceptance_rate > 0.001);
-}
-
-fn logit(x: f64) -> f64 {
-    (x / (1. - x)).ln()
 }
 
 fn expit(x: f64) -> f64 {
@@ -157,11 +152,4 @@ fn expit(x: f64) -> f64 {
 
 fn log_normal(x: f64, mu: f64, sigma: f64) -> f64 {
     -0.5 * ((x - mu) / sigma).powi(2) - f64::ln(f64::sqrt(2. * PI) * sigma)
-}
-
-fn gen_unit<R>(rng: &mut R) -> f64
-where
-    R: Rng,
-{
-    Distribution::<f64>::sample(&Standard, rng)
 }
