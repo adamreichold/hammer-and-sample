@@ -11,4 +11,5 @@ rand = { version = "0.8", default-features = false }
 rayon = { version = "1.5", optional = true }
 
 [dev-dependencies]
+rand_distr = "0.4"
 rand_pcg = "0.3"
