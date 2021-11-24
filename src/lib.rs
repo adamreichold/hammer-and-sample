@@ -30,7 +30,7 @@ pub trait Model: Send + Sync {
     fn log_prob(&self, state: &Self::Params) -> f64;
 }
 
-pub fn sample<M, W, R>(model: &M, walkers: W, iterations: usize) -> Vec<M::Params>
+pub fn sample<M, W, R>(model: &M, walkers: W, iterations: usize) -> (Vec<M::Params>, usize)
 where
     M: Model,
     W: Iterator<Item = (M::Params, R)>,
@@ -68,7 +68,9 @@ where
         }));
     }
 
-    chain
+    let accepted = walkers.iter().map(|walker| walker.accepted).sum();
+
+    (chain, accepted)
 }
 
 struct Walker<M, R>

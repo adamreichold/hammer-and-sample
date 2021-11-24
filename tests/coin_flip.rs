@@ -33,7 +33,7 @@ fn coin_flip() {
 
     let walkers = (0..100).map(|_| ([rng.gen()], Pcg64Mcg::from_rng(&mut rng).unwrap()));
 
-    let chain = sample(&model, walkers, 1000);
+    let (chain, accepted) = sample(&model, walkers, 1000);
 
     let converged_chain = &chain[100 * 100..];
 
@@ -41,4 +41,8 @@ fn coin_flip() {
         converged_chain.iter().map(|params| params[0]).sum::<f64>() / converged_chain.len() as f64;
 
     assert!((true_p - estimated_p).abs() < 0.002);
+
+    let acceptance_rate = accepted as f64 / chain.len() as f64;
+
+    assert!(acceptance_rate > 0.4 && acceptance_rate < 0.6);
 }
