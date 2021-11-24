@@ -8,16 +8,16 @@ use rayon::iter::{IntoParallelRefMutIterator, ParallelExtend, ParallelIterator};
 pub trait Params: Send + Sync + Clone {
     const DIMENSION: usize;
 
-    fn propose(&self, other: &Self, z_2: f64) -> Self;
+    fn propose(&self, other: &Self, z: f64) -> Self;
 }
 
 impl<const N: usize> Params for [f64; N] {
     const DIMENSION: usize = N;
 
-    fn propose(&self, other: &Self, z_2: f64) -> Self {
+    fn propose(&self, other: &Self, z: f64) -> Self {
         let mut new = [0.; N];
         for i in 0..N {
-            new[i] = other[i] + z_2 * (other[i] - self[i]);
+            new[i] = other[i] + z * (other[i] - self[i]);
         }
         new
     }
@@ -101,14 +101,13 @@ where
     }
 
     fn move_(&mut self, model: &M, other: &Self) {
-        let z = (M::SCALE - 1.) * gen_unit(&mut self.rng) + 1.;
-        let z_2 = z * z / M::SCALE;
+        let z = ((M::SCALE - 1.) * gen_unit(&mut self.rng) + 1.).powi(2) / M::SCALE;
 
-        let new_state = self.state.propose(&other.state, z_2);
+        let new_state = self.state.propose(&other.state, z);
         let new_log_prob = model.log_prob(&new_state);
 
         let log_prob_diff =
-            (M::Params::DIMENSION - 1) as f64 * z_2.ln() + new_log_prob - self.log_prob;
+            (M::Params::DIMENSION - 1) as f64 * z.ln() + new_log_prob - self.log_prob;
 
         if log_prob_diff > gen_unit(&mut self.rng).ln() {
             self.state = new_state;
