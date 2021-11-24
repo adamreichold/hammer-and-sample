@@ -17,7 +17,7 @@ impl<const N: usize> Params for [f64; N] {
     fn propose(&self, other: &Self, z: f64) -> Self {
         let mut new = [0.; N];
         for i in 0..N {
-            new[i] = other[i] + z * (other[i] - self[i]);
+            new[i] = other[i] - z * (other[i] - self[i]);
         }
         new
     }

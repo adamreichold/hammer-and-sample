@@ -10,9 +10,9 @@ use hammer_and_sample::{sample, Model};
 fn hierarchical() {
     const GROUPS: usize = 10;
     const OBSERVATIONS: usize = 1000;
-    const WALKERS: usize = 1000;
-    const ITERATIONS: usize = 10000;
-    const BURN_IN: usize = 5000;
+    const WALKERS: usize = 100;
+    const ITERATIONS: usize = 1000;
+    const BURN_IN: usize = 100;
 
     struct Hierarchical {
         data: Vec<(bool, usize)>,
@@ -42,25 +42,21 @@ fn hierarchical() {
                 let group_alpha = state[2 + group];
                 let group_theta = expit(logit_theta + group_alpha);
 
-                ln_group_theta[group] = group_theta.ln();
-                ln_1_group_theta[group] = (1. - group_theta).ln();
-
                 // likelihood of group_alpha given sigma
                 log_prob += log_normal(group_alpha, 0., sigma);
+
+                ln_group_theta[group] = group_theta.ln();
+                ln_1_group_theta[group] = (1. - group_theta).ln();
             }
 
             // likelihood of data given group_theta
-            log_prob += self
-                .data
-                .iter()
-                .map(|(data, group)| {
-                    if *data {
-                        ln_group_theta[*group]
-                    } else {
-                        ln_1_group_theta[*group]
-                    }
-                })
-                .sum::<f64>();
+            for (data, group) in &self.data {
+                log_prob += if *data {
+                    ln_group_theta[*group]
+                } else {
+                    ln_1_group_theta[*group]
+                };
+            }
 
             log_prob
         }
@@ -138,12 +134,12 @@ fn hierarchical() {
             .sum::<f64>()
             / converged_chain.len() as f64;
 
-        assert!((true_alpha[group] - estimated_group_alpha).abs() < 1.);
+        assert!((true_alpha[group] - estimated_group_alpha).abs() < 0.5);
     }
 
     let acceptance_rate = accepted as f64 / chain.len() as f64;
 
-    assert!(acceptance_rate > 0.001);
+    assert!(acceptance_rate > 0.3 && acceptance_rate < 0.4);
 }
 
 fn expit(x: f64) -> f64 {

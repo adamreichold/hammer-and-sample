@@ -59,7 +59,7 @@ fn coin_flip() {
 
     let acceptance_rate = accepted as f64 / chain.len() as f64;
 
-    assert!(acceptance_rate > 0.4 && acceptance_rate < 0.6);
+    assert!(acceptance_rate > 0.7 && acceptance_rate < 0.8);
 }
 
 fn gen_unit<R>(rng: &mut R) -> f64
