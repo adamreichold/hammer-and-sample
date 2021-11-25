@@ -6,13 +6,15 @@ use rand::{
 use rayon::iter::{IntoParallelRefMutIterator, ParallelExtend, ParallelIterator};
 
 pub trait Params: Send + Sync + Clone {
-    const DIMENSION: usize;
+    fn dimension(&self) -> usize;
 
     fn propose(&self, other: &Self, z: f64) -> Self;
 }
 
 impl<const N: usize> Params for [f64; N] {
-    const DIMENSION: usize = N;
+    fn dimension(&self) -> usize {
+        N
+    }
 
     fn propose(&self, other: &Self, z: f64) -> Self {
         let mut new = [0.; N];
@@ -20,6 +22,19 @@ impl<const N: usize> Params for [f64; N] {
             new[i] = other[i] - z * (other[i] - self[i]);
         }
         new
+    }
+}
+
+impl Params for Vec<f64> {
+    fn dimension(&self) -> usize {
+        self.len()
+    }
+
+    fn propose(&self, other: &Self, z: f64) -> Self {
+        self.iter()
+            .zip(other)
+            .map(|(self_, other)| other - z * (other - self_))
+            .collect()
     }
 }
 
@@ -48,7 +63,7 @@ where
         .collect::<Vec<_>>();
 
     assert!(!walkers.is_empty() && walkers.len() % 2 == 0);
-    assert!(walkers.len() >= 2 * M::Params::DIMENSION);
+    assert!(walkers.len() >= 2 * walkers[0].state.dimension());
 
     let mut chain = Vec::with_capacity(walkers.len() * iterations);
 
@@ -113,7 +128,7 @@ where
         let new_log_prob = model.log_prob(&new_state);
 
         let log_prob_diff =
-            (M::Params::DIMENSION - 1) as f64 * z.ln() + new_log_prob - self.log_prob;
+            (new_state.dimension() - 1) as f64 * z.ln() + new_log_prob - self.log_prob;
 
         if log_prob_diff > gen_unit(&mut self.rng).ln() {
             self.state = new_state;
