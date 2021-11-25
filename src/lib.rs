@@ -31,11 +31,17 @@ pub trait Model: Send + Sync {
     fn log_prob(&self, state: &Self::Params) -> f64;
 }
 
-pub fn sample<M, W, R>(model: &M, walkers: W, iterations: usize) -> (Vec<M::Params>, usize)
+pub fn sample<M, W, R, E>(
+    model: &M,
+    walkers: W,
+    iterations: usize,
+    execution: &E,
+) -> (Vec<M::Params>, usize)
 where
     M: Model,
     W: Iterator<Item = (M::Params, R)>,
     R: Rng + Send + Sync,
+    E: Execution,
 {
     let mut walkers = walkers
         .map(|(state, rng)| Walker::new(model, state, rng))
@@ -51,21 +57,21 @@ where
 
     let random_index = Uniform::new(0, half);
 
+    let update_walker = |walker: &mut Walker<M, R>, other_walkers: &[Walker<M, R>]| {
+        let other = &other_walkers[random_index.sample(&mut walker.rng)];
+
+        walker.move_(model, other);
+
+        walker.state.clone()
+    };
+
     for _ in 0..iterations {
-        extend_chain(&mut chain, lower_half, |walker| {
-            let other = &upper_half[random_index.sample(&mut walker.rng)];
-
-            walker.move_(model, other);
-
-            walker.state.clone()
+        execution.extend_chain(&mut chain, lower_half, |walker| {
+            update_walker(walker, upper_half)
         });
 
-        extend_chain(&mut chain, upper_half, |walker| {
-            let other = &lower_half[random_index.sample(&mut walker.rng)];
-
-            walker.move_(model, other);
-
-            walker.state.clone()
+        execution.extend_chain(&mut chain, upper_half, |walker| {
+            update_walker(walker, lower_half)
         });
     }
 
@@ -74,7 +80,7 @@ where
     (chain, accepted)
 }
 
-struct Walker<M, R>
+pub struct Walker<M, R>
 where
     M: Model,
 {
@@ -117,28 +123,57 @@ where
     }
 }
 
-#[cfg(feature = "rayon")]
-fn extend_chain<M, R, U>(chain: &mut Vec<M::Params>, walkers: &mut [Walker<M, R>], update: U)
-where
-    M: Model,
-    R: Send,
-    U: Fn(&mut Walker<M, R>) -> M::Params + Send + Sync,
-{
-    chain.par_extend(walkers.par_iter_mut().map(update));
-}
-
-#[cfg(not(feature = "rayon"))]
-fn extend_chain<M, R, U>(chain: &mut Vec<M::Params>, walkers: &mut [Walker<M, R>], update: U)
-where
-    M: Model,
-    U: Fn(&mut Walker<M, R>) -> M::Params,
-{
-    chain.extend(walkers.iter_mut().map(update));
-}
-
 fn gen_unit<R>(rng: &mut R) -> f64
 where
     R: Rng,
 {
     Distribution::<f64>::sample(&Standard, rng)
+}
+
+pub trait Execution {
+    fn extend_chain<M, R, U>(
+        &self,
+        chain: &mut Vec<M::Params>,
+        walkers: &mut [Walker<M, R>],
+        update: U,
+    ) where
+        M: Model,
+        R: Send + Sync,
+        U: Fn(&mut Walker<M, R>) -> M::Params + Send + Sync;
+}
+
+pub struct Serial;
+
+impl Execution for Serial {
+    fn extend_chain<M, R, U>(
+        &self,
+        chain: &mut Vec<M::Params>,
+        walkers: &mut [Walker<M, R>],
+        update: U,
+    ) where
+        M: Model,
+        R: Send + Sync,
+        U: Fn(&mut Walker<M, R>) -> M::Params + Send + Sync,
+    {
+        chain.extend(walkers.iter_mut().map(update));
+    }
+}
+
+#[cfg(feature = "rayon")]
+pub struct Parallel;
+
+#[cfg(feature = "rayon")]
+impl Execution for Parallel {
+    fn extend_chain<M, R, U>(
+        &self,
+        chain: &mut Vec<M::Params>,
+        walkers: &mut [Walker<M, R>],
+        update: U,
+    ) where
+        M: Model,
+        R: Send + Sync,
+        U: Fn(&mut Walker<M, R>) -> M::Params + Send + Sync,
+    {
+        chain.par_extend(walkers.par_iter_mut().map(update));
+    }
 }

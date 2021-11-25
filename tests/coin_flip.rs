@@ -4,7 +4,7 @@ use rand::{
 };
 use rand_pcg::Pcg64Mcg;
 
-use hammer_and_sample::{sample, Model};
+use hammer_and_sample::{sample, Model, Serial};
 
 #[test]
 fn coin_flip() {
@@ -48,7 +48,7 @@ fn coin_flip() {
         ([guess_p], rng)
     });
 
-    let (chain, accepted) = sample(&model, walkers, 1000);
+    let (chain, accepted) = sample(&model, walkers, 1000, &Serial);
 
     let converged_chain = &chain[100 * 100..];
 

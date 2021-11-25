@@ -4,12 +4,13 @@ use rand::{seq::SliceRandom, SeedableRng};
 use rand_distr::{Bernoulli, Distribution, Normal};
 use rand_pcg::Pcg64Mcg;
 
-use hammer_and_sample::{sample, Model};
+use hammer_and_sample::{sample, Model, Parallel};
 
 #[test]
 fn hierarchical() {
     const GROUPS: usize = 10;
     const OBSERVATIONS: usize = 1000;
+
     const WALKERS: usize = 100;
     const ITERATIONS: usize = 1000;
     const BURN_IN: usize = 100;
@@ -113,7 +114,7 @@ fn hierarchical() {
         (guess, rng)
     });
 
-    let (chain, accepted) = sample(&model, walkers, ITERATIONS);
+    let (chain, accepted) = sample(&model, walkers, ITERATIONS, &Parallel);
 
     let converged_chain = &chain[WALKERS * BURN_IN..];
 
