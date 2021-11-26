@@ -75,9 +75,7 @@ where
     let update_walker = |walker: &mut Walker<M, R>, other_walkers: &[Walker<M, R>]| {
         let other = &other_walkers[random_index.sample(&mut walker.rng)];
 
-        walker.move_(model, other);
-
-        walker.state.clone()
+        walker.move_(model, other)
     };
 
     for _ in 0..iterations {
@@ -121,20 +119,24 @@ where
         }
     }
 
-    fn move_(&mut self, model: &M, other: &Self) {
+    fn move_(&mut self, model: &M, other: &Self) -> M::Params {
         let z = ((M::SCALE - 1.) * gen_unit(&mut self.rng) + 1.).powi(2) / M::SCALE;
 
-        let new_state = self.state.propose(&other.state, z);
+        let mut new_state = self.state.propose(&other.state, z);
         let new_log_prob = model.log_prob(&new_state);
 
         let log_prob_diff =
             (new_state.dimension() - 1) as f64 * z.ln() + new_log_prob - self.log_prob;
 
         if log_prob_diff > gen_unit(&mut self.rng).ln() {
-            self.state = new_state;
+            self.state.clone_from(&new_state);
             self.log_prob = new_log_prob;
             self.accepted += 1;
+        } else {
+            new_state.clone_from(&self.state);
         }
+
+        new_state
     }
 }
 
