@@ -9,11 +9,11 @@ use hammer_and_sample::{sample, Model, Parallel};
 #[test]
 fn hierarchical() {
     const GROUPS: usize = 10;
-    const OBSERVATIONS: usize = 1000;
+    const OBSERVATIONS: usize = 10000;
 
     const WALKERS: usize = 100;
-    const ITERATIONS: usize = 1000;
-    const BURN_IN: usize = 100;
+    const ITERATIONS: usize = 5000;
+    const BURN_IN: usize = 1000;
 
     struct Hierarchical {
         data: Vec<(bool, usize)>,
@@ -63,13 +63,13 @@ fn hierarchical() {
         }
     }
 
+    let mut data = Vec::new();
+
     let true_logit_theta = -3.;
     let true_sigma = 1.;
-    let mut true_alpha = [0.; GROUPS];
+    let mut true_theta = [0.; GROUPS];
 
     let mut rng = Pcg64Mcg::seed_from_u64(0);
-
-    let mut data = Vec::new();
 
     let true_alpha_dist = Normal::<f64>::new(0., true_sigma).unwrap();
 
@@ -77,7 +77,7 @@ fn hierarchical() {
         let true_group_alpha = true_alpha_dist.sample(&mut rng);
         let true_group_theta = expit(true_logit_theta + true_group_alpha);
 
-        true_alpha[group] = true_group_alpha;
+        true_theta[group] = true_group_theta;
 
         let dist = Bernoulli::new(true_group_theta).unwrap();
 
@@ -118,24 +118,14 @@ fn hierarchical() {
 
     let converged_chain = &chain[WALKERS * BURN_IN..];
 
-    let estimated_logit_theta =
-        converged_chain.iter().map(|params| params[0]).sum::<f64>() / converged_chain.len() as f64;
-
-    assert!((true_logit_theta - estimated_logit_theta).abs() < 0.1);
-
-    let estimated_sigma =
-        converged_chain.iter().map(|params| params[1]).sum::<f64>() / converged_chain.len() as f64;
-
-    assert!((true_sigma - estimated_sigma).abs() < 0.1);
-
     for group in 0..GROUPS {
-        let estimated_group_alpha = converged_chain
+        let estimated_group_theta = converged_chain
             .iter()
-            .map(|params| params[2 + group])
+            .map(|params| expit(params[0] + params[2 + group]))
             .sum::<f64>()
             / converged_chain.len() as f64;
 
-        assert!((true_alpha[group] - estimated_group_alpha).abs() < 0.5);
+        assert!((true_theta[group] - estimated_group_theta).abs() < 0.005);
     }
 
     let acceptance_rate = accepted as f64 / chain.len() as f64;
