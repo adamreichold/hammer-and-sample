@@ -16,7 +16,7 @@ fn hierarchical() {
     const BURN_IN: usize = 1000;
 
     struct Hierarchical {
-        data: Vec<(bool, usize)>,
+        data: [(usize, usize); GROUPS],
     }
 
     impl Model for Hierarchical {
@@ -36,9 +36,6 @@ fn hierarchical() {
 
             log_prob += log_normal(sigma, 0., 2.) + f64::ln(2.);
 
-            let mut ln_group_theta = [0.; GROUPS];
-            let mut ln_1_group_theta = [0.; GROUPS];
-
             for group in 0..GROUPS {
                 let group_alpha = state[2 + group];
                 let group_theta = expit(logit_theta + group_alpha);
@@ -46,17 +43,11 @@ fn hierarchical() {
                 // likelihood of group_alpha given sigma
                 log_prob += log_normal(group_alpha, 0., sigma);
 
-                ln_group_theta[group] = group_theta.ln();
-                ln_1_group_theta[group] = (1. - group_theta).ln();
-            }
+                // likelihood of data given group_theta
+                let outcomes = self.data[group];
 
-            // likelihood of data given group_theta
-            for (data, group) in &self.data {
-                log_prob += if *data {
-                    ln_group_theta[*group]
-                } else {
-                    ln_1_group_theta[*group]
-                };
+                log_prob += outcomes.0 as f64 * group_theta.ln();
+                log_prob += outcomes.1 as f64 * (1. - group_theta).ln();
             }
 
             log_prob
@@ -88,7 +79,19 @@ fn hierarchical() {
 
     data.shuffle(&mut rng);
 
-    let model = Hierarchical { data };
+    let model = Hierarchical {
+        data: data
+            .into_iter()
+            .fold([(0, 0); GROUPS], |mut outcomes, (data, group)| {
+                if data {
+                    outcomes[group].0 += 1;
+                } else {
+                    outcomes[group].1 += 1;
+                }
+
+                outcomes
+            }),
+    };
 
     let prior_logit_theta = Normal::<f64>::new(-2., 2.).unwrap();
     let prior_sigma = Normal::<f64>::new(0., 2.).unwrap();
