@@ -15,7 +15,7 @@ rand = { version = "0.8", default-features = false }
 rayon = { version = "1.5", optional = true }
 
 [features]
-python-bindings = ["pyo3", "numpy", "rand/small_rng"]
+python_bindings = ["pyo3", "numpy", "rand/small_rng"]
 
 [dev-dependencies]
 rand_distr = "0.4"

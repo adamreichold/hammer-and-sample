@@ -1,6 +1,6 @@
 use rand::{
     distributions::{Bernoulli, Distribution, Standard},
-    Rng, SeedableRng,
+    SeedableRng,
 };
 use rand_pcg::Pcg64Mcg;
 
@@ -43,7 +43,7 @@ fn coin_flip() {
     let walkers = (0..100).map(|_| {
         let mut rng = Pcg64Mcg::from_rng(&mut rng).unwrap();
 
-        let guess_p = gen_unit(&mut rng);
+        let guess_p = Distribution::<f64>::sample(&Standard, &mut rng);
 
         ([guess_p], rng)
     });
@@ -60,11 +60,4 @@ fn coin_flip() {
     let acceptance_rate = accepted as f64 / chain.len() as f64;
 
     assert!(acceptance_rate > 0.7 && acceptance_rate < 0.8);
-}
-
-fn gen_unit<R>(rng: &mut R) -> f64
-where
-    R: Rng,
-{
-    Distribution::<f64>::sample(&Standard, rng)
 }
