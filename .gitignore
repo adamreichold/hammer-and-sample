@@ -1,2 +1,7 @@
 /target
 Cargo.lock
+pyvenv.cfg
+/bin
+/lib
+/lib64
+/include

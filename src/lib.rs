@@ -1,3 +1,5 @@
+#[cfg(feature = "python-bindings")]
+use pyo3::{pymodule, types::PyModule, PyResult, Python};
 use rand::{
     distributions::{Distribution, Standard, Uniform},
     Rng,
@@ -193,4 +195,83 @@ impl Execution for Parallel {
     {
         chain.par_extend(walkers.par_iter_mut().map(update));
     }
+}
+
+#[cfg(feature = "python-bindings")]
+#[pymodule]
+#[pyo3(name = "hammer_and_sample")]
+fn init(_py: Python, module: &PyModule) -> PyResult<()> {
+    use numpy::{ndarray::Zip, IntoPyArray, PyArray1, PyArray2};
+    use pyo3::{PyAny, Python};
+    use rand::{rngs::SmallRng, SeedableRng};
+
+    #[pyfn(module)]
+    #[pyo3(name = "sample")]
+    fn wrapper<'py>(
+        py: Python<'py>,
+        log_prob: &'py PyAny,
+        guess: Vec<&'py PyArray1<f64>>,
+        seed: u64,
+        iterations: usize,
+    ) -> (&'py PyArray2<f64>, usize) {
+        #[derive(Clone, Copy)]
+        struct PyParams<'py>(&'py PyArray1<f64>);
+
+        impl Params for PyParams<'_> {
+            fn dimension(&self) -> usize {
+                self.0.len()
+            }
+
+            fn propose(&self, other: &Self, z: f64) -> Self {
+                Self(
+                    Zip::from(self.0.readonly().as_array())
+                        .and(other.0.readonly().as_array())
+                        .map_collect(|self_, other| other - z * (other - self_))
+                        .into_pyarray(self.0.py()),
+                )
+            }
+        }
+
+        unsafe impl Send for PyParams<'_> {}
+
+        unsafe impl Sync for PyParams<'_> {}
+
+        struct PyModel<'py>(&'py PyAny);
+
+        impl<'py> Model for PyModel<'py> {
+            type Params = PyParams<'py>;
+
+            fn log_prob(&self, state: &Self::Params) -> f64 {
+                self.0.call1((state.0,)).unwrap().extract().unwrap()
+            }
+        }
+
+        unsafe impl Send for PyModel<'_> {}
+
+        unsafe impl Sync for PyModel<'_> {}
+
+        let mut rng = SmallRng::seed_from_u64(seed);
+
+        let walkers = guess.into_iter().map(|state| {
+            let rng = SmallRng::from_rng(&mut rng).unwrap();
+
+            (PyParams(state), rng)
+        });
+
+        let (chain, accepted) = sample(&PyModel(log_prob), walkers, iterations, &Serial);
+
+        unsafe {
+            let flat_chain = PyArray2::<f64>::new(py, (chain.len(), chain[0].dimension()), false);
+
+            for (i, sample) in chain.into_iter().enumerate() {
+                for (j, param) in sample.0.readonly().iter().unwrap().enumerate() {
+                    *flat_chain.uget_mut((i, j)) = *param;
+                }
+            }
+
+            (flat_chain, accepted)
+        }
+    }
+
+    Ok(())
 }
