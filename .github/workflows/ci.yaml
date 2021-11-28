@@ -1,0 +1,49 @@
+on: [push]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+          components: rustfmt, clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-targets --all-features -- --deny warnings
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --all-features
+
+  wheel:
+    needs: [check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: messense/maturin-action@v1
+        with:
+          manylinux: auto
+          args: --release --cargo-extra-args="--all-features"
+      - uses: rickstaa/action-create-tag@v1
+        with:
+          tag: continuous
+          force_push_tag: true
+      - uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          removeArtifacts: true
+          tag: continuous
+          name: Continuous build
+          body: Wheel built automatically from latest commit for CPython 3.8 or later.
+          prerelease: true
+          artifacts: "target/wheels/*.whl"
+          token: ${{ secrets.GITHUB_TOKEN }}

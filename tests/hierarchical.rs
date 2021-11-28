@@ -64,6 +64,7 @@ fn hierarchical() {
 
     let true_alpha_dist = Normal::<f64>::new(0., true_sigma).unwrap();
 
+    #[allow(clippy::needless_range_loop)]
     for group in 0..GROUPS {
         let true_group_alpha = true_alpha_dist.sample(&mut rng);
         let true_group_theta = expit(true_logit_theta + true_group_alpha);
