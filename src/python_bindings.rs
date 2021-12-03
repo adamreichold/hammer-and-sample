@@ -1,3 +1,5 @@
+#![allow(clippy::needless_option_as_deref)]
+
 use numpy::{ndarray::Zip, IntoPyArray, PyArray1, PyArray2};
 use pyo3::{pyfunction, pymodule, types::PyModule, wrap_pyfunction, Py, PyAny, PyResult, Python};
 use rand::{rngs::SmallRng, SeedableRng};

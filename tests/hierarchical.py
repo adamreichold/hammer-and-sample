@@ -29,7 +29,7 @@ def log_prob(state):
     if sigma < 0:
         return float("-inf")
 
-    log_prob += norm.logpdf(sigma, 0, 2) + np.log(2)
+    log_prob += norm.logpdf(sigma, 0, 2)
 
     for group in range(len(outcomes)):
         group_alpha = state[2 + group]

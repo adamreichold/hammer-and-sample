@@ -1,5 +1,3 @@
-use std::f64::consts::PI;
-
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_distr::{Bernoulli, Distribution, Normal};
 use rand_pcg::Pcg64Mcg;
@@ -34,7 +32,7 @@ fn hierarchical() {
                 return f64::NEG_INFINITY;
             }
 
-            log_prob += log_normal(sigma, 0., 2.) + f64::ln(2.);
+            log_prob += log_normal(sigma, 0., 2.);
 
             for group in 0..GROUPS {
                 let group_alpha = state[2 + group];
@@ -142,5 +140,5 @@ fn expit(x: f64) -> f64 {
 }
 
 fn log_normal(x: f64, mu: f64, sigma: f64) -> f64 {
-    -0.5 * ((x - mu) / sigma).powi(2) - f64::ln(f64::sqrt(2. * PI) * sigma)
+    -0.5 * ((x - mu) / sigma).powi(2) - sigma.ln()
 }
