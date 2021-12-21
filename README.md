@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/hammer-and-sample.svg)](https://crates.io/crates/hammer-and-sample)
 [![docs.rs](https://docs.rs/hammer-and-sample/badge.svg)](https://docs.rs/hammer-and-sample)
-[![github.com](https://github.com/adamreichold/hammer-and-sample/actions/workflows/test.yaml/badge.svg)](https://github.com/adamreichold/hammer-and-sample/actions/workflows/ci.yaml)
+[![github.com](https://github.com/adamreichold/hammer-and-sample/actions/workflows/ci.yaml/badge.svg)](https://github.com/adamreichold/hammer-and-sample/actions/workflows/ci.yaml)
 
 A simplistic MCMC sampler implementing the affine-invariant ensemble sampling of [emcee](https://emcee.readthedocs.io/) with serial execution and optionally with parallel execution based on Rayon.
 
