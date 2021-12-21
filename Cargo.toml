@@ -11,18 +11,11 @@ keywords = ["mcmc", "ensemble", "sampler", "emcee"]
 categories = ["science", "mathematics", "algorithms"]
 
 [lib]
-name = "hammer_and_sample"
-crate-type = ["rlib", "cdylib"]
 test = false
 
 [dependencies]
-numpy = { version = "0.15", optional = true }
-pyo3 = { version = "0.15", features = ["extension-module", "abi3-py38"], optional = true }
 rand = { version = "0.8", default-features = false }
 rayon = { version = "1.5", optional = true }
-
-[features]
-python_bindings = ["pyo3", "numpy", "rand/small_rng"]
 
 [dev-dependencies]
 rand_distr = "0.4"

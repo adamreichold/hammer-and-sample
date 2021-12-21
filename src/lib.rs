@@ -5,12 +5,10 @@ use rand::{
 #[cfg(feature = "rayon")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelExtend, ParallelIterator};
 
-#[cfg(feature = "python_bindings")]
-mod python_bindings;
-
 pub trait Params: Send + Sync + Clone {
     fn dimension(&self) -> usize;
 
+    #[must_use]
     fn propose(&self, other: &Self, z: f64) -> Self;
 }
 
