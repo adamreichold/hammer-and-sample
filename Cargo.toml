@@ -1,7 +1,14 @@
 [package]
 name = "hammer-and-sample"
+description = "Simplistic MCMC ensemble sampler based on emcee, the MCMC hammer"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+documentation = "https://docs.rs/hammer-and-sample"
+repository = "https://github.com/adamreichold/hammer-and-sample"
+keywords = ["mcmc", "ensemble", "sampler", "emcee"]
+categories = ["science", "mathematics", "algorithms"]
 
 [lib]
 name = "hammer_and_sample"
@@ -20,3 +27,6 @@ python_bindings = ["pyo3", "numpy", "rand/small_rng"]
 [dev-dependencies]
 rand_distr = "0.4"
 rand_pcg = "0.3"
+
+[package.metadata.docs.rs]
+features = ["rayon"]
