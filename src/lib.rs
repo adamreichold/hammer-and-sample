@@ -54,11 +54,11 @@ use rand::{
 #[cfg(feature = "rayon")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelExtend, ParallelIterator};
 
-/// Model parameters defining the state space of the Markov chain.
+/// Model parameters defining the state space of the Markov chain
 pub trait Params: Send + Sync + Clone {
     /// Dimension of the state space
     ///
-    /// This can depend on the instance for situations where the number of parameters depends on the data, e.g. the number of groups in a hierarchical model.
+    /// This can depend on `self` in situations where the number of parameters depends on the data itself, e.g. the number of groups in a hierarchical model.
     fn dimension(&self) -> usize;
 
     /// Propose a new parameters doing a stretch move based on the parameters `other` and the scale `z`
@@ -66,7 +66,7 @@ pub trait Params: Send + Sync + Clone {
     fn propose(&self, other: &Self, z: f64) -> Self;
 }
 
-/// Model parameters stored as an array of length `N` considered as an element of the vector space `R^N`.
+/// Model parameters stored as an array of length `N` considered as an element of the vector space `R^N`
 impl<const N: usize> Params for [f64; N] {
     fn dimension(&self) -> usize {
         N
@@ -81,7 +81,7 @@ impl<const N: usize> Params for [f64; N] {
     }
 }
 
-/// Model parameters stored as a vector of length `n` considered as an element of the vector space `R^n`.
+/// Model parameters stored as a vector of length `n` considered as an element of the vector space `R^n`
 impl Params for Vec<f64> {
     fn dimension(&self) -> usize {
         self.len()
@@ -102,7 +102,7 @@ pub trait Model: Send + Sync {
 
     /// The logarithm of the probability determined by the model given the parameters stored in `state`, up to an addititive constant
     ///
-    /// The sampler will only ever consider differences of these values, i.e. any addititive constant that does _not_ depend on `state` can be omitted when computing this.
+    /// The sampler will only ever consider differences of these values, i.e. any addititive constant that does _not_ depend on `state` can be omitted when computing them.
     fn log_prob(&self, state: &Self::Params) -> f64;
 
     /// Scale parameter for stretch moves
@@ -111,8 +111,7 @@ pub trait Model: Send + Sync {
 
 /// Runs the sampler for `iterations` of the given `model` using the chosen `execution` strategy
 ///
-/// The `walkers` iterator is used to initialise the ensemble of walkers
-/// by defining their initial parameter values and providing appropriately seeded PRNG instances.
+/// The `walkers` iterator is used to initialise the ensemble of walkers by defining their initial parameter values and providing appropriately seeded PRNG instances.
 ///
 /// The number of walkers must be non-zero, even and at least twice the number of parameters.
 ///
@@ -143,7 +142,7 @@ where
 
     let random_index = Uniform::new(0, half);
 
-    let update_walker = |walker: &mut Walker<M, R>, other_walkers: &[Walker<M, R>]| {
+    let update_walker = move |walker: &mut Walker<M, R>, other_walkers: &[Walker<M, R>]| {
         let other = &other_walkers[random_index.sample(&mut walker.rng)];
 
         walker.move_(model, other)
@@ -215,7 +214,7 @@ fn gen_unit<R>(rng: &mut R) -> f64
 where
     R: Rng,
 {
-    Distribution::<f64>::sample(&Standard, rng)
+    Standard.sample(rng)
 }
 
 /// Execution strategy for `update`ing an ensemble of `walkers` to extend the given `chain`
