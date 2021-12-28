@@ -2,7 +2,7 @@ use rand::{seq::SliceRandom, SeedableRng};
 use rand_distr::{Bernoulli, Distribution, Normal};
 use rand_pcg::Pcg64Mcg;
 
-use hammer_and_sample::{sample, Model, Parallel};
+use hammer_and_sample::{auto_corr_time, sample, Model, Parallel};
 
 #[test]
 fn hierarchical() {
@@ -133,6 +133,11 @@ fn hierarchical() {
     let acceptance_rate = accepted as f64 / chain.len() as f64;
 
     assert!(acceptance_rate > 0.3 && acceptance_rate < 0.4);
+
+    let auto_corr_time_logit_theta =
+        auto_corr_time(converged_chain.iter().map(|params| params[0]), None, None).unwrap();
+
+    assert!(converged_chain.len() as f64 / auto_corr_time_logit_theta > 10_000.);
 }
 
 fn expit(x: f64) -> f64 {

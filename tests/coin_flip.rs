@@ -4,7 +4,7 @@ use rand::{
 };
 use rand_pcg::Pcg64Mcg;
 
-use hammer_and_sample::{sample, Model, Serial};
+use hammer_and_sample::{auto_corr_time, sample, Model, Serial};
 
 #[test]
 fn coin_flip() {
@@ -60,4 +60,9 @@ fn coin_flip() {
     let acceptance_rate = accepted as f64 / chain.len() as f64;
 
     assert!(acceptance_rate > 0.7 && acceptance_rate < 0.8);
+
+    let auto_corr_time_p =
+        auto_corr_time(converged_chain.iter().map(|params| params[0]), None, None).unwrap();
+
+    assert!(converged_chain.len() as f64 / auto_corr_time_p > 10_000.);
 }

@@ -217,6 +217,56 @@ where
     Standard.sample(rng)
 }
 
+/// Estimate the integrated auto-correlation time
+///
+/// `min_win_size` defines the factor between the estimate and the window size up to which the auto-correlation is computed. (Default value: 5)
+///
+/// `min_chain_len` defines the factor between the estimate and the chain length above which the estimate is considered reliable. (Default value: 50)
+pub fn auto_corr_time<C>(
+    chain: C,
+    min_win_size: Option<usize>,
+    min_chain_len: Option<usize>,
+) -> Option<f64>
+where
+    C: ExactSizeIterator<Item = f64> + Clone,
+{
+    let min_win_size = min_win_size.unwrap_or(5) as f64;
+    let min_chain_len = min_chain_len.unwrap_or(50) as f64;
+
+    let mean = chain.clone().sum::<f64>() / chain.len() as f64;
+
+    let variance = chain
+        .clone()
+        .map(|sample| (sample - mean).powi(2))
+        .sum::<f64>()
+        / chain.len() as f64;
+
+    let mut estimate = 1.;
+
+    for lag in 1..chain.len() {
+        let auto_corr = chain
+            .clone()
+            .skip(lag)
+            .zip(chain.clone())
+            .map(|(lhs, rhs)| (lhs - mean) * (rhs - mean))
+            .sum::<f64>()
+            / chain.len() as f64
+            / variance;
+
+        estimate += 2. * auto_corr;
+
+        if (lag as f64) >= min_win_size * estimate {
+            break;
+        }
+    }
+
+    if chain.len() as f64 >= min_chain_len * estimate {
+        Some(estimate)
+    } else {
+        None
+    }
+}
+
 /// Execution strategy for `update`ing an ensemble of `walkers` to extend the given `chain`
 pub trait Execution {
     /// Must call `update` exactly once for all elements of `walkers` and store the results in `chain`
