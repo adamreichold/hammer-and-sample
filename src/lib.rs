@@ -61,7 +61,7 @@ pub trait Params: Send + Sync + Clone {
     /// This can depend on `self` in situations where the number of parameters depends on the data itself, e.g. the number of groups in a hierarchical model.
     fn dimension(&self) -> usize;
 
-    /// Propose a new parameters doing a stretch move based on the parameters `other` and the scale `z`
+    /// Propose new parameters doing a stretch move based on the parameters `other` and the scale `z`
     #[must_use]
     fn propose(&self, other: &Self, z: f64) -> Self;
 }
@@ -219,6 +219,8 @@ where
 
 /// Estimate the integrated auto-correlation time
 ///
+/// Returns `None` if the chain length is considered insufficient for a reliable estimate.
+///
 /// `min_win_size` defines the factor between the estimate and the window size up to which the auto-correlation is computed. (Default value: 5)
 ///
 /// `min_chain_len` defines the factor between the estimate and the chain length above which the estimate is considered reliable. (Default value: 50)
@@ -255,7 +257,7 @@ where
 
         estimate += 2. * auto_corr;
 
-        if (lag as f64) >= min_win_size * estimate {
+        if lag as f64 >= min_win_size * estimate {
             break;
         }
     }
