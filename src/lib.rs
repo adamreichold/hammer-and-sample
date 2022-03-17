@@ -95,6 +95,20 @@ impl Params for Vec<f64> {
     }
 }
 
+/// Model parameters stored as a boxed slice of length `n` considered as an element of the vector space `R^n`
+impl Params for Box<[f64]> {
+    fn dimension(&self) -> usize {
+        self.len()
+    }
+
+    fn propose(&self, other: &Self, z: f64) -> Self {
+        self.iter()
+            .zip(other.iter())
+            .map(|(self_, other)| other - z * (other - self_))
+            .collect()
+    }
+}
+
 /// Models are defined by the type of their parameters and their probability functions
 pub trait Model: Send + Sync {
     /// Type used to store the model parameters, e.g. `[f64; N]` or `Vec<f64>`
