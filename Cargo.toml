@@ -16,6 +16,7 @@ test = false
 [dependencies]
 rand = { version = "0.8", default-features = false }
 rayon = { version = "1.5", optional = true }
+kdam = "0.3.0"
 
 [dev-dependencies]
 rand_distr = "0.4"

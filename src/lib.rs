@@ -47,6 +47,7 @@
 //!     chain.iter().map(|&[p]| p).sum::<f64>() / chain.len() as f64
 //! }
 //! ```
+use kdam::tqdm;
 use rand::{
     distributions::{Distribution, Standard, Uniform},
     Rng,
@@ -162,7 +163,7 @@ where
         walker.move_(model, other)
     };
 
-    for _ in 0..iterations {
+    for _ in tqdm!(0..iterations) {
         execution.extend_chain(&mut chain, lower_half, |walker| {
             update_walker(walker, upper_half)
         });
