@@ -2,7 +2,7 @@ use rand::{seq::SliceRandom, SeedableRng};
 use rand_distr::{Bernoulli, Distribution, Normal};
 use rand_pcg::Pcg64Mcg;
 
-use hammer_and_sample::{auto_corr_time, sample, Model, Parallel};
+use hammer_and_sample::{auto_corr_time, sample, MinChainLen, Model, Parallel};
 
 #[test]
 fn hierarchical() {
@@ -116,7 +116,7 @@ fn hierarchical() {
         (guess, rng)
     });
 
-    let (chain, accepted) = sample(&model, walkers, ITERATIONS, &Parallel);
+    let (chain, accepted) = sample(&model, walkers, MinChainLen(WALKERS * ITERATIONS), Parallel);
 
     let converged_chain = &chain[WALKERS * BURN_IN..];
 

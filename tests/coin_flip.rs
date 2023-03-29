@@ -4,7 +4,7 @@ use rand::{
 };
 use rand_pcg::Pcg64Mcg;
 
-use hammer_and_sample::{auto_corr_time, sample, Model, Serial};
+use hammer_and_sample::{auto_corr_time, sample, MinChainLen, Model, Serial};
 
 #[test]
 fn coin_flip() {
@@ -48,9 +48,9 @@ fn coin_flip() {
         ([guess_p], rng)
     });
 
-    let (chain, accepted) = sample(&model, walkers, 1000, &Serial);
+    let (chain, accepted) = sample(&model, walkers, MinChainLen(100_000), Serial);
 
-    let converged_chain = &chain[100 * 100..];
+    let converged_chain = &chain[10_000..];
 
     let estimated_p =
         converged_chain.iter().map(|params| params[0]).sum::<f64>() / converged_chain.len() as f64;

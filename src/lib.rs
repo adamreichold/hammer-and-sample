@@ -3,7 +3,7 @@
 //! Simplistic MCMC ensemble sampler based on [emcee](https://emcee.readthedocs.io/), the MCMC hammer
 //!
 //! ```
-//! use hammer_and_sample::{sample, Model, Serial};
+//! use hammer_and_sample::{sample, MinChainLen, Model, Serial};
 //! use rand::{Rng, SeedableRng};
 //! use rand_pcg::Pcg64;
 //!
@@ -39,7 +39,7 @@
 //!         ([p], rng)
 //!     });
 //!
-//!     let (chain, _accepted) = sample(&model, walkers, 1000, &Serial);
+//!     let (chain, _accepted) = sample(&model, walkers, MinChainLen(10 * 1000), Serial);
 //!
 //!     // 100 iterations of 10 walkers as burn-in
 //!     let chain = &chain[10 * 100..];
@@ -47,6 +47,8 @@
 //!     chain.iter().map(|&[p]| p).sum::<f64>() / chain.len() as f64
 //! }
 //! ```
+use std::ops::ControlFlow;
+
 use rand::{
     distributions::{Distribution, Standard, Uniform},
     Rng,
@@ -123,23 +125,24 @@ pub trait Model: Send + Sync {
     const SCALE: f64 = 2.;
 }
 
-/// Runs the sampler for `iterations` of the given `model` using the chosen `execution` strategy
+/// Runs the sampler on the given [`model`][Model] using the chosen [`schedule`][Schedule] and [`execution`][Execution] strategy
 ///
 /// The `walkers` iterator is used to initialise the ensemble of walkers by defining their initial parameter values and providing appropriately seeded PRNG instances.
 ///
 /// The number of walkers must be non-zero, even and at least twice the number of parameters.
 ///
 /// A vector of samples and the number of accepted moves are returned.
-pub fn sample<M, W, R, E>(
+pub fn sample<M, W, R, S, E>(
     model: &M,
     walkers: W,
-    iterations: usize,
-    execution: &E,
+    mut schedule: S,
+    execution: E,
 ) -> (Vec<M::Params>, usize)
 where
     M: Model,
     W: Iterator<Item = (M::Params, R)>,
     R: Rng + Send + Sync,
+    S: Schedule<M::Params>,
     E: Execution,
 {
     let mut walkers = walkers
@@ -149,7 +152,8 @@ where
     assert!(!walkers.is_empty() && walkers.len() % 2 == 0);
     assert!(walkers.len() >= 2 * walkers[0].state.dimension());
 
-    let mut chain = Vec::with_capacity(walkers.len() * iterations);
+    let mut chain =
+        Vec::with_capacity(walkers.len() * schedule.iterations(walkers.len()).unwrap_or(0));
 
     let half = walkers.len() / 2;
     let (lower_half, upper_half) = walkers.split_at_mut(half);
@@ -162,7 +166,7 @@ where
         walker.move_(model, other)
     };
 
-    for _ in 0..iterations {
+    while schedule.next_step(&chain).is_continue() {
         execution.extend_chain(&mut chain, lower_half, |walker| {
             update_walker(walker, upper_half)
         });
@@ -280,6 +284,84 @@ where
         Some(estimate)
     } else {
         None
+    }
+}
+
+/// Determines how many iterations of the sampler are executed
+///
+/// Enables running the sampler until some condition based on
+/// the samples collected so far is fulfilled, for example using
+/// the [auto-correlation time][auto_corr_time].
+///
+/// The [`MinChainLen`] implementor provides a reasonable default.
+///
+/// It can also be used for progress reporting:
+///
+/// ```
+/// use std::ops::ControlFlow;
+///
+/// use hammer_and_sample::{Params, Schedule};
+///
+/// struct FixedIterationsWithProgress {
+///     done: usize,
+///     todo: usize,
+/// }
+///
+/// impl<P> Schedule<P> for FixedIterationsWithProgress
+/// where
+///     P: Params
+/// {
+///      fn next_step(&mut self, _chain: &[P]) -> ControlFlow<()> {
+///         if self.done == self.todo {
+///             eprintln!("100%");
+///
+///             ControlFlow::Break(())
+///         } else {
+///             self.done += 1;
+///
+///             if self.done % (self.todo / 100) == 0 {
+///                 eprintln!("{}% ", self.done / (self.todo / 100));
+///             }
+///
+///             ControlFlow::Continue(())
+///         }
+///     }
+///
+///     fn iterations(&self, _walkers: usize) -> Option<usize> {
+///         Some(self.todo)
+///     }
+/// }
+/// ```
+pub trait Schedule<P>
+where
+    P: Params,
+{
+    /// The next step in the schedule given the current `chain`, either [continue][ControlFlow::Continue] or [break][ControlFlow::Break]
+    fn next_step(&mut self, chain: &[P]) -> ControlFlow<()>;
+
+    /// If possible, compute a lower bound for the number of iterations given the number of `walkers`
+    fn iterations(&self, _walkers: usize) -> Option<usize> {
+        None
+    }
+}
+
+/// Runs the sampler until the given chain length is reached
+pub struct MinChainLen(pub usize);
+
+impl<P> Schedule<P> for MinChainLen
+where
+    P: Params,
+{
+    fn next_step(&mut self, chain: &[P]) -> ControlFlow<()> {
+        if self.0 <= chain.len() {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        }
+    }
+
+    fn iterations(&self, walkers: usize) -> Option<usize> {
+        Some(self.0 / walkers)
     }
 }
 
