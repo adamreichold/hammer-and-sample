@@ -34,7 +34,7 @@
 //!     let walkers = (0..10).map(|seed| {
 //!         let mut rng = Pcg64::seed_from_u64(seed);
 //!
-//!         let p = rng.gen_range(0.0..=1.0);
+//!         let p = rng.random_range(0.0..=1.0);
 //!
 //!         ([p], rng)
 //!     });
@@ -63,9 +63,11 @@ pub trait Params: Send + Sync + Clone {
     /// This can depend on `self` in situations where the number of parameters depends on the data itself, e.g. the number of groups in a hierarchical model.
     fn dimension(&self) -> usize;
 
-    /// Propose new parameters doing a stretch move based on the parameters `other` and the scale `z`
+    /// Compute new parameters by mapping the given closure `f` over all coordinate pairs
     #[must_use]
-    fn propose(&self, other: &Self, z: f64) -> Self;
+    fn map<F>(&self, other: &Self, f: F) -> Self
+    where
+        F: Fn(f64, f64) -> f64;
 }
 
 /// Model parameters stored as an array of length `N` considered as an element of the vector space `R^N`
@@ -74,10 +76,13 @@ impl<const N: usize> Params for [f64; N] {
         N
     }
 
-    fn propose(&self, other: &Self, z: f64) -> Self {
+    fn map<F>(&self, other: &Self, f: F) -> Self
+    where
+        F: Fn(f64, f64) -> f64,
+    {
         let mut new = [0.; N];
         for i in 0..N {
-            new[i] = other[i] - z * (other[i] - self[i]);
+            new[i] = f(self[i], other[i]);
         }
         new
     }
@@ -89,10 +94,13 @@ impl Params for Vec<f64> {
         self.len()
     }
 
-    fn propose(&self, other: &Self, z: f64) -> Self {
+    fn map<F>(&self, other: &Self, f: F) -> Self
+    where
+        F: Fn(f64, f64) -> f64,
+    {
         self.iter()
             .zip(other)
-            .map(|(self_, other)| other - z * (other - self_))
+            .map(|(self_, other)| f(*self_, *other))
             .collect()
     }
 }
@@ -103,10 +111,13 @@ impl Params for Box<[f64]> {
         self.len()
     }
 
-    fn propose(&self, other: &Self, z: f64) -> Self {
+    fn map<F>(&self, other: &Self, f: F) -> Self
+    where
+        F: Fn(f64, f64) -> f64,
+    {
         self.iter()
             .zip(other.iter())
-            .map(|(self_, other)| other - z * (other - self_))
+            .map(|(self_, other)| f(*self_, *other))
             .collect()
     }
 }
@@ -210,7 +221,10 @@ where
     fn move_(&mut self, model: &M, other: &Self) -> M::Params {
         let z = ((M::SCALE - 1.) * gen_unit(&mut self.rng) + 1.).powi(2) / M::SCALE;
 
-        let mut new_state = self.state.propose(&other.state, z);
+        let mut new_state = self
+            .state
+            .map(&other.state, |self_, other| other - z * (other - self_));
+
         let new_log_prob = model.log_prob(&new_state);
 
         let log_prob_diff =
@@ -372,9 +386,9 @@ where
 /// # use rand::SeedableRng;
 /// # use rand_pcg::Pcg64Mcg;
 /// #
-/// # struct CoinFlip;
+/// # struct Dummy;
 /// #
-/// # impl Model for CoinFlip {
+/// # impl Model for Dummy {
 /// #     type Params = [f64; 1];
 /// #
 /// #     fn log_prob(&self, state: &Self::Params) -> f64 {
@@ -382,12 +396,12 @@ where
 /// #     }
 /// # }
 /// #
-/// # let model = CoinFlip;
+/// # let model = Dummy;
 /// #
 /// # let walkers = (0..100).map(|idx| {
 /// #     let mut rng = Pcg64Mcg::seed_from_u64(idx);
 /// #
-/// #     ([0.5], rng)
+/// #     ([0.], rng)
 /// # });
 /// #
 /// let schedule = WithProgress {
