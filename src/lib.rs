@@ -63,11 +63,11 @@ pub trait Params: Send + Sync + Clone {
     /// This can depend on `self` in situations where the number of parameters depends on the data itself, e.g. the number of groups in a hierarchical model.
     fn dimension(&self) -> usize;
 
-    /// Compute new parameters by mapping the given closure `f` over all coordinate pairs
-    #[must_use]
-    fn map<F>(&self, other: &Self, f: F) -> Self
-    where
-        F: Fn(f64, f64) -> f64;
+    /// Access the individual parameter values as an iterator
+    fn values(&self) -> impl Iterator<Item = &f64>;
+
+    /// Collect new parameters from the given iterator
+    fn collect(iter: impl Iterator<Item = f64>) -> Self;
 }
 
 /// Model parameters stored as an array of length `N` considered as an element of the vector space `R^N`
@@ -76,14 +76,13 @@ impl<const N: usize> Params for [f64; N] {
         N
     }
 
-    fn map<F>(&self, other: &Self, f: F) -> Self
-    where
-        F: Fn(f64, f64) -> f64,
-    {
+    fn values(&self) -> impl Iterator<Item = &f64> {
+        self.iter()
+    }
+
+    fn collect(iter: impl Iterator<Item = f64>) -> Self {
         let mut new = [0.; N];
-        for i in 0..N {
-            new[i] = f(self[i], other[i]);
-        }
+        iter.enumerate().for_each(|(idx, value)| new[idx] = value);
         new
     }
 }
@@ -94,14 +93,12 @@ impl Params for Vec<f64> {
         self.len()
     }
 
-    fn map<F>(&self, other: &Self, f: F) -> Self
-    where
-        F: Fn(f64, f64) -> f64,
-    {
+    fn values(&self) -> impl Iterator<Item = &f64> {
         self.iter()
-            .zip(other)
-            .map(|(self_, other)| f(*self_, *other))
-            .collect()
+    }
+
+    fn collect(iter: impl Iterator<Item = f64>) -> Self {
+        iter.collect()
     }
 }
 
@@ -111,14 +108,12 @@ impl Params for Box<[f64]> {
         self.len()
     }
 
-    fn map<F>(&self, other: &Self, f: F) -> Self
-    where
-        F: Fn(f64, f64) -> f64,
-    {
+    fn values(&self) -> impl Iterator<Item = &f64> {
         self.iter()
-            .zip(other.iter())
-            .map(|(self_, other)| f(*self_, *other))
-            .collect()
+    }
+
+    fn collect(iter: impl Iterator<Item = f64>) -> Self {
+        iter.collect()
     }
 }
 
@@ -221,9 +216,12 @@ where
     fn move_(&mut self, model: &M, other: &Self) -> M::Params {
         let z = ((M::SCALE - 1.) * gen_unit(&mut self.rng) + 1.).powi(2) / M::SCALE;
 
-        let mut new_state = self
-            .state
-            .map(&other.state, |self_, other| other - z * (other - self_));
+        let mut new_state = M::Params::collect(
+            self.state
+                .values()
+                .zip(other.state.values())
+                .map(|(self_, other)| other - z * (other - self_)),
+        );
 
         let new_log_prob = model.log_prob(&new_state);
 
