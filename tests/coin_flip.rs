@@ -1,10 +1,15 @@
+use std::f64::consts::FRAC_1_SQRT_2;
+
 use rand::{
     distr::{Bernoulli, Distribution, StandardUniform},
     SeedableRng,
 };
 use rand_pcg::Pcg64Mcg;
 
-use hammer_and_sample::{auto_corr_time, sample, MinChainLen, Model, Serial};
+use hammer_and_sample::{
+    auto_corr_time, sample, DifferentialEvolution, MinChainLen, Mixture, Model, RandomGaussian,
+    Serial, Stretch,
+};
 
 #[test]
 fn coin_flip() {
@@ -48,7 +53,13 @@ fn coin_flip() {
         ([guess_p], rng)
     });
 
-    let (chain, accepted) = sample(&model, walkers, MinChainLen(100_000), Serial);
+    let move_ = Mixture::from((
+        (Stretch::default(), 2),
+        (DifferentialEvolution::new(2.38 * FRAC_1_SQRT_2, 1.0e-5), 1),
+        (RandomGaussian::new(1.0e-3), 1),
+    ));
+
+    let (chain, accepted) = sample(&model, &move_, walkers, MinChainLen(100_000), Serial);
 
     let converged_chain = &chain[10_000..];
 
