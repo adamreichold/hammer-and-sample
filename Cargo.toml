@@ -15,10 +15,10 @@ test = false
 
 [dependencies]
 rand = { version = "0.9", default-features = false }
+rand_distr = "0.5"
 rayon = { version = "1.5", optional = true }
 
 [dev-dependencies]
-rand_distr = "0.5"
 rand_pcg = "0.9"
 
 [package.metadata.docs.rs]

@@ -3,7 +3,7 @@
 //! Simplistic MCMC ensemble sampler based on [emcee](https://emcee.readthedocs.io/), the MCMC hammer
 //!
 //! ```
-//! use hammer_and_sample::{sample, MinChainLen, Model, Serial};
+//! use hammer_and_sample::{sample, MinChainLen, Model, Serial, Stretch};
 //! use rand::{Rng, SeedableRng};
 //! use rand_pcg::Pcg64;
 //!
@@ -39,7 +39,7 @@
 //!         ([p], rng)
 //!     });
 //!
-//!     let (chain, _accepted) = sample(&model, walkers, MinChainLen(10 * 1000), Serial);
+//!     let (chain, _accepted) = sample(&model, &Stretch::default(), walkers, MinChainLen(10 * 1000), Serial);
 //!
 //!     // 100 iterations of 10 walkers as burn-in
 //!     let chain = &chain[10 * 100..];
@@ -48,10 +48,15 @@
 //! }
 //! ```
 use std::ops::ControlFlow;
+use std::ptr;
 
 use rand::{
     distr::{Distribution, StandardUniform, Uniform},
     Rng,
+};
+use rand_distr::{
+    weighted::{AliasableWeight, WeightedAliasIndex},
+    Normal,
 };
 #[cfg(feature = "rayon")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelExtend, ParallelIterator};
@@ -117,6 +122,209 @@ impl Params for Box<[f64]> {
     }
 }
 
+/// TODO
+pub trait Move<M>
+where
+    M: Model,
+{
+    /// TODO
+    fn propose<'a, O, R>(&self, self_: &'a M::Params, other: O, rng: &mut R) -> (M::Params, f64)
+    where
+        O: FnMut(&mut R) -> &'a M::Params,
+        R: Rng;
+}
+
+/// TODO
+pub struct Stretch {
+    scale: f64,
+}
+
+impl Stretch {
+    /// TODO
+    pub fn new(scale: f64) -> Self {
+        Self { scale }
+    }
+}
+
+impl Default for Stretch {
+    fn default() -> Self {
+        Self::new(2.)
+    }
+}
+
+impl<M> Move<M> for Stretch
+where
+    M: Model,
+{
+    fn propose<'a, O, R>(&self, self_: &'a M::Params, mut other: O, rng: &mut R) -> (M::Params, f64)
+    where
+        O: FnMut(&mut R) -> &'a M::Params,
+        R: Rng,
+    {
+        let other = other(rng);
+
+        let z = ((self.scale - 1.) * gen_unit(rng) + 1.).powi(2) / self.scale;
+
+        let new_state = M::Params::collect(
+            self_
+                .values()
+                .zip(other.values())
+                .map(|(self_, other)| other - z * (other - self_)),
+        );
+
+        let factor = (new_state.dimension() - 1) as f64 * z.ln();
+
+        (new_state, factor)
+    }
+}
+
+/// TODO
+pub struct DifferentialEvolution {
+    gamma: Normal<f64>,
+}
+
+impl DifferentialEvolution {
+    /// TODO
+    pub fn new(gamma_mean: f64, gamma_std_dev: f64) -> Self {
+        Self {
+            gamma: Normal::new(gamma_mean, gamma_std_dev).unwrap(),
+        }
+    }
+}
+
+impl<M> Move<M> for DifferentialEvolution
+where
+    M: Model,
+{
+    fn propose<'a, O, R>(&self, self_: &'a M::Params, mut other: O, rng: &mut R) -> (M::Params, f64)
+    where
+        O: FnMut(&mut R) -> &'a M::Params,
+        R: Rng,
+    {
+        let first_other = other(rng);
+        let mut second_other = other(rng);
+
+        while ptr::eq(first_other, second_other) {
+            second_other = other(rng);
+        }
+
+        let gamma = self.gamma.sample(rng);
+
+        let new_state = M::Params::collect(
+            self_
+                .values()
+                .zip(first_other.values())
+                .zip(second_other.values())
+                .map(|((self_, first_other), second_other)| {
+                    self_ + gamma * (first_other - second_other)
+                }),
+        );
+
+        (new_state, 0.)
+    }
+}
+
+/// TODO
+pub struct RandomGaussian {
+    dist: Normal<f64>,
+}
+
+impl RandomGaussian {
+    /// TODO
+    pub fn new(scale: f64) -> Self {
+        Self {
+            dist: Normal::new(0., scale).unwrap(),
+        }
+    }
+}
+
+impl<M> Move<M> for RandomGaussian
+where
+    M: Model,
+{
+    fn propose<'a, O, R>(&self, self_: &'a M::Params, _other: O, rng: &mut R) -> (M::Params, f64)
+    where
+        O: FnMut(&mut R) -> &'a M::Params,
+        R: Rng,
+    {
+        let dir = rng.random_range(0..self_.dimension());
+
+        let new_state = M::Params::collect(self_.values().enumerate().map(|(idx, value)| {
+            if idx == dir {
+                value + self.dist.sample(rng)
+            } else {
+                *value
+            }
+        }));
+
+        (new_state, 0.)
+    }
+}
+
+/// TODO
+pub struct Mixture<W, M>(WeightedAliasIndex<W>, M)
+where
+    W: AliasableWeight;
+
+macro_rules! impl_mixture {
+    ( $( $types:ident @ $weights:ident),+ ) => {
+        impl<W, $( $types ),+> From<( $( ( $types, W ) ),+ )> for Mixture<W, ( $( $types ),+ )>
+        where
+            W: AliasableWeight
+        {
+            #[allow(non_snake_case)]
+            fn from(( $( ( $types, $weights ) ),+ ): ( $( ( $types, W ) ),+ )) -> Self {
+                let index = WeightedAliasIndex::new(vec![$( $weights ),+]).unwrap();
+
+                Self(index, ( $( $types ),+ ))
+            }
+        }
+
+        impl<W, $( $types ),+, M> Move<M> for Mixture<W, ( $( $types ),+ )>
+        where
+            W: AliasableWeight,
+            M: Model,
+            $( $types: Move<M> ),+
+        {
+            #[allow(non_snake_case)]
+            fn propose<'a, O, R>(&self, self_: &'a M::Params, other: O, rng: &mut R) -> (M::Params, f64)
+            where
+                O: FnMut(&mut R) -> &'a M::Params,
+                R: Rng,
+            {
+                let Self(index, ( $( $types ),+ )) = self;
+
+                let chosen_index = index.sample(rng);
+
+                let mut index = 0;
+
+                $(
+
+                #[allow(unused_assignments)]
+                if chosen_index == index {
+                    return $types.propose(self_, other, rng)
+                } else {
+                    index += 1;
+                }
+
+                )+
+
+                unreachable!()
+            }
+        }
+    };
+}
+
+impl_mixture!(A @ a, B @ b);
+impl_mixture!(A @ a, B @ b, C @ c);
+impl_mixture!(A @ a, B @ b, C @ c, D @ d);
+impl_mixture!(A @ a, B @ b, C @ c, D @ d, E @ e);
+impl_mixture!(A @ a, B @ b, C @ c, D @ d, E @ e, F @ f);
+impl_mixture!(A @ a, B @ b, C @ c, D @ d, E @ e, F @ f, G @ g);
+impl_mixture!(A @ a, B @ b, C @ c, D @ d, E @ e, F @ f, G @ g, H @ h);
+impl_mixture!(A @ a, B @ b, C @ c, D @ d, E @ e, F @ f, G @ g, H @ h, I @ i);
+impl_mixture!(A @ a, B @ b, C @ c, D @ d, E @ e, F @ f, G @ g, H @ h, I @ i, J @ j);
+
 /// Models are defined by the type of their parameters and their probability functions
 pub trait Model: Send + Sync {
     /// Type used to store the model parameters, e.g. `[f64; N]` or `Vec<f64>`
@@ -126,9 +334,6 @@ pub trait Model: Send + Sync {
     ///
     /// The sampler will only ever consider differences of these values, i.e. any addititive constant that does _not_ depend on `state` can be omitted when computing them.
     fn log_prob(&self, state: &Self::Params) -> f64;
-
-    /// Scale parameter for stretch moves
-    const SCALE: f64 = 2.;
 }
 
 /// Runs the sampler on the given [`model`][Model] using the chosen [`schedule`][Schedule] and [`execution`][Execution] strategy
@@ -138,17 +343,19 @@ pub trait Model: Send + Sync {
 /// The number of walkers must be non-zero, even and at least twice the number of parameters.
 ///
 /// A vector of samples and the number of accepted moves are returned.
-pub fn sample<M, W, R, S, E>(
-    model: &M,
+pub fn sample<MD, MV, W, R, S, E>(
+    model: &MD,
+    move_: &MV,
     walkers: W,
     mut schedule: S,
     execution: E,
-) -> (Vec<M::Params>, usize)
+) -> (Vec<MD::Params>, usize)
 where
-    M: Model,
-    W: Iterator<Item = (M::Params, R)>,
+    MD: Model,
+    MV: Move<MD> + Send + Sync,
+    W: Iterator<Item = (MD::Params, R)>,
     R: Rng + Send + Sync,
-    S: Schedule<M::Params>,
+    S: Schedule<MD::Params>,
     E: Execution,
 {
     let mut walkers = walkers
@@ -166,10 +373,8 @@ where
 
     let random_index = Uniform::new(0, half).unwrap();
 
-    let update_walker = move |walker: &mut Walker<M, R>, other_walkers: &[Walker<M, R>]| {
-        let other = &other_walkers[random_index.sample(&mut walker.rng)];
-
-        walker.move_(model, other)
+    let update_walker = move |walker: &mut Walker<MD, R>, other_walkers: &[Walker<MD, R>]| {
+        walker.move_(model, move_, |rng| &other_walkers[random_index.sample(rng)])
     };
 
     while schedule.next_step(&chain).is_continue() {
@@ -187,22 +392,22 @@ where
     (chain, accepted)
 }
 
-struct Walker<M, R>
+struct Walker<MD, R>
 where
-    M: Model,
+    MD: Model,
 {
-    state: M::Params,
+    state: MD::Params,
     log_prob: f64,
     rng: R,
     accepted: usize,
 }
 
-impl<M, R> Walker<M, R>
+impl<MD, R> Walker<MD, R>
 where
-    M: Model,
+    MD: Model,
     R: Rng,
 {
-    fn new(model: &M, state: M::Params, rng: R) -> Self {
+    fn new(model: &MD, state: MD::Params, rng: R) -> Self {
         let log_prob = model.log_prob(&state);
 
         Self {
@@ -213,20 +418,17 @@ where
         }
     }
 
-    fn move_(&mut self, model: &M, other: &Self) -> M::Params {
-        let z = ((M::SCALE - 1.) * gen_unit(&mut self.rng) + 1.).powi(2) / M::SCALE;
-
-        let mut new_state = M::Params::collect(
-            self.state
-                .values()
-                .zip(other.state.values())
-                .map(|(self_, other)| other - z * (other - self_)),
-        );
+    fn move_<'a, MV, O>(&'a mut self, model: &MD, move_: &MV, mut other: O) -> MD::Params
+    where
+        MV: Move<MD>,
+        O: FnMut(&mut R) -> &'a Self,
+    {
+        let (mut new_state, factor) =
+            move_.propose(&self.state, |rng| &other(rng).state, &mut self.rng);
 
         let new_log_prob = model.log_prob(&new_state);
 
-        let log_prob_diff =
-            (new_state.dimension() - 1) as f64 * z.ln() + new_log_prob - self.log_prob;
+        let log_prob_diff = factor + new_log_prob - self.log_prob;
 
         if log_prob_diff > gen_unit(&mut self.rng).ln() {
             self.state.clone_from(&new_state);
@@ -380,7 +582,7 @@ where
 /// Runs the inner `schedule` after calling the given `callback`
 ///
 /// ```
-/// # use hammer_and_sample::{sample, MinChainLen, Model, Schedule, Serial, WithProgress};
+/// # use hammer_and_sample::{sample, MinChainLen, Model, Schedule, Serial, Stretch, WithProgress};
 /// # use rand::SeedableRng;
 /// # use rand_pcg::Pcg64Mcg;
 /// #
@@ -407,7 +609,7 @@ where
 ///     callback: |chain: &[_]| eprintln!("{} %", 100 * chain.len() / 100_000),
 /// };
 ///
-/// let (chain, accepted) = sample(&model, walkers, schedule, Serial);
+/// let (chain, accepted) = sample(&model, &Stretch::default(), walkers, schedule, Serial);
 /// ```
 pub struct WithProgress<S, C> {
     /// The inner schedule which determines the number of iterations
