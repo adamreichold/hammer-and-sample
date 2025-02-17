@@ -365,6 +365,62 @@ where
     }
 }
 
+/// Runs the inner `schedule` after calling the given `callback`
+///
+/// ```
+/// # use hammer_and_sample::{sample, MinChainLen, Model, Schedule, Serial, WithProgress};
+/// # use rand::SeedableRng;
+/// # use rand_pcg::Pcg64Mcg;
+/// #
+/// # struct CoinFlip;
+/// #
+/// # impl Model for CoinFlip {
+/// #     type Params = [f64; 1];
+/// #
+/// #     fn log_prob(&self, state: &Self::Params) -> f64 {
+/// #         f64::NEG_INFINITY
+/// #     }
+/// # }
+/// #
+/// # let model = CoinFlip;
+/// #
+/// # let walkers = (0..100).map(|idx| {
+/// #     let mut rng = Pcg64Mcg::seed_from_u64(idx);
+/// #
+/// #     ([0.5], rng)
+/// # });
+/// #
+/// let schedule = WithProgress {
+///     schedule: MinChainLen(100_000),
+///     callback: |chain: &[_]| eprintln!("{} %", 100 * chain.len() / 100_000),
+/// };
+///
+/// let (chain, accepted) = sample(&model, walkers, schedule, Serial);
+/// ```
+pub struct WithProgress<S, C> {
+    /// The inner schedule which determines the number of iterations
+    pub schedule: S,
+    /// The callback which is executed after each iteration
+    pub callback: C,
+}
+
+impl<P, S, C> Schedule<P> for WithProgress<S, C>
+where
+    P: Params,
+    S: Schedule<P>,
+    C: FnMut(&[P]),
+{
+    fn next_step(&mut self, chain: &[P]) -> ControlFlow<()> {
+        (self.callback)(chain);
+
+        self.schedule.next_step(chain)
+    }
+
+    fn iterations(&self, walkers: usize) -> Option<usize> {
+        self.schedule.iterations(walkers)
+    }
+}
+
 /// Execution strategy for `update`ing an ensemble of `walkers` to extend the given `chain`
 pub trait Execution {
     /// Must call `update` exactly once for all elements of `walkers` and store the results in `chain`
