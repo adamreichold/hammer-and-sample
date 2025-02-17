@@ -1,5 +1,5 @@
 use rand::{
-    distributions::{Bernoulli, Distribution, Standard},
+    distr::{Bernoulli, Distribution, StandardUniform},
     SeedableRng,
 };
 use rand_pcg::Pcg64Mcg;
@@ -41,9 +41,9 @@ fn coin_flip() {
     };
 
     let walkers = (0..100).map(|_| {
-        let mut rng = Pcg64Mcg::from_rng(&mut rng).unwrap();
+        let mut rng = Pcg64Mcg::from_rng(&mut rng);
 
-        let guess_p = Distribution::<f64>::sample(&Standard, &mut rng);
+        let guess_p = Distribution::<f64>::sample(&StandardUniform, &mut rng);
 
         ([guess_p], rng)
     });

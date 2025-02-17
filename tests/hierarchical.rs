@@ -96,7 +96,7 @@ fn hierarchical() {
     let prior_sigma = Normal::<f64>::new(0., 2.).unwrap();
 
     let walkers = (0..WALKERS).map(|_| {
-        let mut rng = Pcg64Mcg::from_rng(&mut rng).unwrap();
+        let mut rng = Pcg64Mcg::from_rng(&mut rng);
 
         let guess_logit_theta = prior_logit_theta.sample(&mut rng);
         let guess_sigma = prior_sigma.sample(&mut rng).abs();

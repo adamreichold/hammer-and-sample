@@ -50,7 +50,7 @@
 use std::ops::ControlFlow;
 
 use rand::{
-    distributions::{Distribution, Standard, Uniform},
+    distr::{Distribution, StandardUniform, Uniform},
     Rng,
 };
 #[cfg(feature = "rayon")]
@@ -158,7 +158,7 @@ where
     let half = walkers.len() / 2;
     let (lower_half, upper_half) = walkers.split_at_mut(half);
 
-    let random_index = Uniform::new(0, half);
+    let random_index = Uniform::new(0, half).unwrap();
 
     let update_walker = move |walker: &mut Walker<M, R>, other_walkers: &[Walker<M, R>]| {
         let other = &other_walkers[random_index.sample(&mut walker.rng)];
@@ -232,7 +232,7 @@ fn gen_unit<R>(rng: &mut R) -> f64
 where
     R: Rng,
 {
-    Standard.sample(rng)
+    StandardUniform.sample(rng)
 }
 
 /// Estimate the integrated auto-correlation time
