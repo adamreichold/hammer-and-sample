@@ -123,9 +123,9 @@ impl Params for Box<[f64]> {
 }
 
 /// A move defines how new estimates of the model parameters are proposed
-pub trait Move<M>
+pub trait Move<P>
 where
-    M: Model,
+    P: Params,
 {
     /// Propose new estimates of the model parameters
     ///
@@ -134,9 +134,9 @@ where
     ///
     /// In addition to the new estimate, a correction factor to be added
     /// to the difference of logarithmic probabilities can be returned.
-    fn propose<'a, O, R>(&self, this: &'a M::Params, other: O, rng: &mut R) -> (M::Params, f64)
+    fn propose<'a, O, R>(&self, this: &'a P, other: O, rng: &mut R) -> (P, f64)
     where
-        O: FnMut(&mut R) -> &'a M::Params,
+        O: FnMut(&mut R) -> &'a P,
         R: Rng;
 }
 
@@ -160,20 +160,20 @@ impl Default for Stretch {
     }
 }
 
-impl<M> Move<M> for Stretch
+impl<P> Move<P> for Stretch
 where
-    M: Model,
+    P: Params,
 {
-    fn propose<'a, O, R>(&self, this: &'a M::Params, mut other: O, rng: &mut R) -> (M::Params, f64)
+    fn propose<'a, O, R>(&self, this: &'a P, mut other: O, rng: &mut R) -> (P, f64)
     where
-        O: FnMut(&mut R) -> &'a M::Params,
+        O: FnMut(&mut R) -> &'a P,
         R: Rng,
     {
         let other = other(rng);
 
         let z = ((self.scale - 1.) * gen_unit(rng) + 1.).powi(2) / self.scale;
 
-        let new_state = M::Params::collect(
+        let new_state = P::collect(
             this.values()
                 .zip(other.values())
                 .map(|(this, other)| (this - other).mul_add(z, *other)),
@@ -205,13 +205,13 @@ impl DifferentialEvolution {
     }
 }
 
-impl<M> Move<M> for DifferentialEvolution
+impl<P> Move<P> for DifferentialEvolution
 where
-    M: Model,
+    P: Params,
 {
-    fn propose<'a, O, R>(&self, this: &'a M::Params, mut other: O, rng: &mut R) -> (M::Params, f64)
+    fn propose<'a, O, R>(&self, this: &'a P, mut other: O, rng: &mut R) -> (P, f64)
     where
-        O: FnMut(&mut R) -> &'a M::Params,
+        O: FnMut(&mut R) -> &'a P,
         R: Rng,
     {
         let first_other = other(rng);
@@ -223,7 +223,7 @@ where
 
         let gamma = self.gamma.sample(rng);
 
-        let new_state = M::Params::collect(
+        let new_state = P::collect(
             this.values()
                 .zip(first_other.values())
                 .zip(second_other.values())
@@ -253,18 +253,18 @@ impl RandomGaussian {
     }
 }
 
-impl<M> Move<M> for RandomGaussian
+impl<P> Move<P> for RandomGaussian
 where
-    M: Model,
+    P: Params,
 {
-    fn propose<'a, O, R>(&self, this: &'a M::Params, _other: O, rng: &mut R) -> (M::Params, f64)
+    fn propose<'a, O, R>(&self, this: &'a P, _other: O, rng: &mut R) -> (P, f64)
     where
-        O: FnMut(&mut R) -> &'a M::Params,
+        O: FnMut(&mut R) -> &'a P,
         R: Rng,
     {
         let dir = rng.random_range(0..this.dimension());
 
-        let new_state = M::Params::collect(this.values().enumerate().map(|(idx, value)| {
+        let new_state = P::collect(this.values().enumerate().map(|(idx, value)| {
             if idx == dir {
                 value + self.displ.sample(rng)
             } else {
@@ -331,16 +331,16 @@ macro_rules! impl_mixture {
             }
         }
 
-        impl<W, $( $types ),+, M> Move<M> for Mixture<W, ( $( $types ),+ )>
+        impl<W, $( $types ),+, P> Move<P> for Mixture<W, ( $( $types ),+ )>
         where
             W: AliasableWeight,
-            M: Model,
-            $( $types: Move<M> ),+
+            P: Params,
+            $( $types: Move<P> ),+
         {
             #[allow(non_snake_case)]
-            fn propose<'a, O, R>(&self, this: &'a M::Params, other: O, rng: &mut R) -> (M::Params, f64)
+            fn propose<'a, O, R>(&self, this: &'a P, other: O, rng: &mut R) -> (P, f64)
             where
-                O: FnMut(&mut R) -> &'a M::Params,
+                O: FnMut(&mut R) -> &'a P,
                 R: Rng,
             {
                 let Self(index, ( $( $types ),+ )) = self;
@@ -409,7 +409,7 @@ pub fn sample<MD, MV, W, R, S, E>(
 ) -> (Vec<MD::Params>, usize)
 where
     MD: Model,
-    MV: Move<MD> + Send + Sync,
+    MV: Move<MD::Params> + Send + Sync,
     W: Iterator<Item = (MD::Params, R)>,
     R: Rng + Send + Sync,
     S: Schedule<MD::Params>,
@@ -477,7 +477,7 @@ where
 
     fn move_<'a, MV, O>(&'a mut self, model: &MD, move_: &MV, mut other: O) -> MD::Params
     where
-        MV: Move<MD>,
+        MV: Move<MD::Params>,
         O: FnMut(&mut R) -> &'a Self,
     {
         let (mut new_state, factor) =
