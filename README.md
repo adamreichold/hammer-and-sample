@@ -1,3 +1,7 @@
+This repository was moved to <https://codeberg.org/adamreichold/hammer-and-sample>.
+
+---
+
 # hammer-and-sample
 
 [![crates.io](https://img.shields.io/crates/v/hammer-and-sample.svg)](https://crates.io/crates/hammer-and-sample)
